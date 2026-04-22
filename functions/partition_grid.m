@@ -1,0 +1,111 @@
+function [grid_utility_loss, grid_distances, grid_prior, neighbor_pairs, distances_to_perturbed] = ...
+    partition_grid(longitude, latitude, utility_loss_matrix, prior, N, M, perturbed_lat, perturbed_lon, l_p)
+
+    % Validate input
+    num_locations = length(longitude);
+    if size(utility_loss_matrix, 1) ~= num_locations
+        error('Number of rows in utility_loss_matrix must match number of locations.');
+    end
+
+    % Bounding box
+    min_lon = min(longitude);
+    max_lon = max(longitude);
+    min_lat = min(latitude);
+    max_lat = max(latitude);
+
+    % Grid bin edges
+    lon_edges = linspace(min_lon, max_lon, M + 1);
+    lat_edges = linspace(min_lat, max_lat, N + 1);
+
+    % Assign each location to a grid cell
+    location_cell_indices = zeros(num_locations, 1);
+    for i = 1:num_locations
+        lon_idx = find(longitude(i) < lon_edges, 1) - 1;
+        lat_idx = find(latitude(i) < lat_edges, 1) - 1;
+
+        if ~isempty(lon_idx) && ~isempty(lat_idx) && ...
+           lon_idx >= 1 && lon_idx <= M && ...
+           lat_idx >= 1 && lat_idx <= N
+            location_cell_indices(i) = sub2ind([N, M], lat_idx, lon_idx);
+        else
+            location_cell_indices(i) = -1; % invalid
+        end
+    end
+
+    % Aggregate utility loss: rows = grid cells, cols = perturbed locations
+    num_input_cells = N * M;
+    num_output_cells = size(utility_loss_matrix, 2);
+    grid_utility_loss = zeros(num_input_cells, num_output_cells);
+    grid_prior = zeros(1,N*M); 
+    for cell_id = 1:num_input_cells
+        indices = find(location_cell_indices == cell_id);
+        grid_prior(cell_id) = sum(prior(indices)); 
+        if ~isempty(indices)
+            grid_utility_loss(cell_id, :) = sum(utility_loss_matrix(indices, :), 1)/size(indices, 1);
+        else
+            grid_utility_loss(cell_id, :) = 0;
+        end
+    end
+
+    % Compute grid cell centroids
+    lon_centers = (lon_edges(1:end-1) + lon_edges(2:end)) / 2;
+    lat_centers = (lat_edges(1:end-1) + lat_edges(2:end)) / 2;
+    [LonGrid, LatGrid] = meshgrid(lon_centers, lat_centers);
+    centroids = [LatGrid(:), LonGrid(:)];
+    
+    % Compute the distance from cell centroids to perturbed locations
+    num_cells = N * M;
+    num_perturbed = length(perturbed_lat);
+    distances_to_perturbed = zeros(num_cells, num_perturbed);
+    
+    for i = 1:num_cells
+        grid_lat = centroids(i, 2);
+        grid_lon = centroids(i, 1);
+        for j = 1:num_perturbed
+            % distances_to_perturbed(i, j) = haversine([grid_lat, grid_lon], [perturbed_lat(j), perturbed_lon(j)]);
+            distances_to_perturbed(i, j) = norm([grid_lat, grid_lon] - [perturbed_lat(j), perturbed_lon(j)], l_p);
+        end
+    end
+
+    % Compute pairwise distances between grid cell centroids (km)
+    grid_distances = zeros(num_input_cells, num_input_cells);
+    for i = 1:num_input_cells
+        for j = i+1:num_input_cells
+            % d = haversine(centroids(i, :), centroids(j, :));
+            d = norm(centroids(i, :) - centroids(j, :), l_p);
+            grid_distances(i, j) = d;
+            grid_distances(j, i) = d;
+        end
+    end
+
+    % Compute neighbor pairs (4-connected neighbors only)
+    neighbor_pairs = [];
+    for row = 1:N
+        for col = 1:M
+            idx = sub2ind([N, M], row, col);
+
+            % Right neighbor
+            if col < M
+                idx_right = sub2ind([N, M], row, col + 1);
+                neighbor_pairs(end + 1, :) = [idx, idx_right];
+            end
+
+            % Down neighbor
+            if row < N
+                idx_down = sub2ind([N, M], row + 1, col);
+                neighbor_pairs(end + 1, :) = [idx, idx_down];
+            end
+        end
+    end
+end
+
+% Haversine distance function (in kilometers)
+function d = haversine(coord1, coord2)
+    R = 6371; % Earth radius
+    lat1 = deg2rad(coord1(1)); lon1 = deg2rad(coord1(2));
+    lat2 = deg2rad(coord2(1)); lon2 = deg2rad(coord2(2));
+    dlat = lat2 - lat1;
+    dlon = lon2 - lon1;
+    a = sin(dlat / 2)^2 + cos(lat1) * cos(lat2) * sin(dlon / 2)^2;
+    d = 2 * R * atan2(sqrt(a), sqrt(1 - a));
+end
