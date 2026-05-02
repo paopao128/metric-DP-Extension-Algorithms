@@ -1,7 +1,7 @@
 % 
 % cornerPoints: 132x2
 % k k^2
-k_value=[2,3,4];
+k_value=[2,2,2];
 k=k_value(interp_id);
 
 xUnique = sort(unique(cornerPoints(:,1)));
