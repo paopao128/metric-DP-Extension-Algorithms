@@ -6,7 +6,7 @@ SCALE = 2;                                                                  % SC
 NR_PER_LOC = 20;                                                            % The number of candidate perturbed locations
 SAMPLE_SIZE_PPR = 1000;                                                     % The sample size when measuring perturbation   
                                                                             % probability ratio (PPR). 
-NR_TEST = 5;                                                                % The number of repeated tests 
+NR_TEST = 2;                                                                % The number of repeated tests 
 NR_VIO_SAMPLE = 1000; 
 EPSILON = 0.4;                                                              % Default privacy budget
 
